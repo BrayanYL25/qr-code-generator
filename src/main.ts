@@ -16,14 +16,14 @@ const qrCodePage: string = `
   <img src="logo-qr-generator.svg" alt="QR Code Logo" class="${styleTailwind.qrCodePage.logo}">
   <main class="${styleTailwind.qrCodePage.main}">
     <div id="code" class="${styleTailwind.qrCodePage.circle}">
-      <canvas id="canvas" class="${styleTailwind.qrCodePage.qr}"></canvas>
+      <img id="qr-img" class="${styleTailwind.qrCodePage.qr}" />
     </div>
     <div class="${styleTailwind.qrCodePage.buttonGroup}">
-      <button class="${styleTailwind.qrCodePage.button}">
+      <button id="download" class="${styleTailwind.qrCodePage.button}">
         Download
         <img src="download.svg" alt="download icon" class="${styleTailwind.qrCodePage.icon}" />
       </button>
-      <button class="${styleTailwind.qrCodePage.button}">
+      <button id="share" class="${styleTailwind.qrCodePage.button}">
         Share
         <img src="link.svg" alt="link icon" class="${styleTailwind.qrCodePage.icon}" />
       </button>
@@ -46,18 +46,74 @@ $form?.addEventListener('submit', (event) => {
   const target = event.target as HTMLElement & qr
   const link = target.linkqr.value ?? 'No'
 
-  const canvas = document.getElementById('canvas') as HTMLCanvasElement | null
+  const $image = document.getElementById('qr-img') as HTMLImageElement | null
+  const options: QRCode.QRCodeToDataURLOptions = {
+    type: 'image/jpeg',
+    errorCorrectionLevel: 'H',
+    margin: 1,
+    width: 220
+  }
 
-  if (canvas != null) {
-    QRCode.toCanvas(canvas, link, { width: 220 }, (err) => {
-      if (err != null) {
+  if ($image != null) {
+    QRCode.toDataURL(link, options, (err, url) => {
+      if (err !== null) {
         console.error(err)
-        return
       }
 
-      console.log('success')
+      document.getElementById('qr-img')?.setAttribute('src', url)
+      const $a = document.createElement('a')
+
+      document.getElementById('download')?.addEventListener('click', () => {
+        fetch(url)
+          .then(async res => await res.blob())
+          .then(blob => {
+            const link = URL.createObjectURL(blob)
+            download($a, link)
+          })
+          .catch(err => console.error(err))
+      })
+
+      document.getElementById('share')?.addEventListener('click', () => {
+        fetch(url)
+          .then(async res => {
+            const types = await navigator.clipboard.read()
+            const isImage = types[0].types.findIndex(e => e === 'image/jpeg')
+
+            if (isImage !== -1) {
+              const data = await res.blob()
+              await share(data)
+            } else {
+              const data = await res.text()
+              await share(data)
+            }
+          })
+          .catch(err => console.error(err))
+      })
     })
-  } else {
-    console.error('Canvas element is missing.')
   }
 })
+
+const download = (a: HTMLAnchorElement, blob: string): void => {
+  a.style.display = 'none'
+  a.href = blob
+  a.download = 'qr.jpeg'
+  document.body.appendChild(a)
+  a.click()
+  URL.revokeObjectURL(blob)
+}
+
+const share = async (content: Blob | string): Promise<void> => {
+  try {
+    if (typeof content === 'string') {
+      await navigator.clipboard.writeText(content)
+    } else {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          [content.type]: content
+        })
+      ])
+    }
+  } catch (error) {
+    console.error(error)
+  }
+}
